@@ -63,6 +63,7 @@ python main.py
 ```sql
 SELECT
 
+TP.ID AS 'ID Proposta',
 TNF.ID AS 'NF_ID',
 TA.NOME AS 'Artista',
 TNF.NUMERO_NOTA_FISCAL AS 'Num_NF',
@@ -107,6 +108,26 @@ CASE
     ELSE '0'
 END AS 'VALIDAÇÃO',
 
+CONCAT(
+    CASE WHEN TNF.NUMERO_NOTA_FISCAL != INF.NUMERO_ROBO THEN 'Número Divergente; ' ELSE '' END,
+    CASE 
+        WHEN NOT (
+             (TC.CNPJ NOT LIKE '%\.%' 
+              	AND TC.CNPJ NOT LIKE '%/%' 
+              	AND TC.CNPJ NOT LIKE '%-%' 
+             AND CONCAT(
+                 SUBSTRING(TC.CNPJ, 1, 2), '.', 
+                 SUBSTRING(TC.CNPJ, 3, 3), '.', 
+                 SUBSTRING(TC.CNPJ, 6, 3), '/', 
+                 SUBSTRING(TC.CNPJ, 9, 4), '-', 
+                 SUBSTRING(TC.CNPJ, 13, 2)
+             ) = INF.CNPJ_TOMADOR)
+             OR 
+             (TC.CNPJ = INF.CNPJ_TOMADOR)
+         ) THEN 'CNPJ Divergente; ' ELSE '' END,
+    CASE WHEN TP.VALOR_BRUTO != INF.VALOR_SERVICO THEN 'Valor Divergente; ' ELSE '' END
+) AS 'DESCRICAO',
+
 EF.FILENAME AS 'Link'
 
 FROM T_PROPOSTAS TP 
@@ -116,10 +137,8 @@ LEFT JOIN EPM_FILES EF ON (TNF.ID = EF.TABLE_ID)
 LEFT JOIN T_ATRACOES TA ON (TNF.FK_ATRACAO = TA.ID)
 LEFT JOIN T_COMPANIES TC ON (TP.FK_CONTRANTE = TC.ID)
 LEFT JOIN T_CONFERENCIA_NOTA_FISCAL TCNF ON (TNF.FK_STATUS_NF = TCNF.ID)
-LEFT JOIN T_INFOS_NOTAS_FISCAIS INF ON INF.FK_NOTA_FISCAL = TNF.ID
+INNER JOIN T_INFOS_NOTAS_FISCAIS INF ON INF.FK_NOTA_FISCAL = TNF.ID
 WHERE DATE_FORMAT(INF.LAST_UPDATE, '%Y/%m/%d') = CURDATE()
-
-GROUP BY TNF.ID
 ```
 
 - A consulta SQL é responsável por recuperar e verificar os dados das notas fiscais a partir do banco de dados. Ela realiza as seguintes verificações:

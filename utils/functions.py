@@ -42,14 +42,14 @@ def extract_text_from_pdf(file_path):
         # Primeira tentativa: tentar extrair texto diretamente do PDF
         with fitz.open(file_path) as pdf:
             text = ""
-            for page in pdf:
-                extracted_text = page.get_text("text")
-                if extracted_text.strip():  # Se o texto extraído não estiver vazio
-                    text += extracted_text
-            if text.strip():
-                print("Texto extraído com sucesso:")
-                print(text)  # Para debug
-                return text.strip()
+            page = pdf[0]
+            extracted_text = page.get_text("text")
+            if extracted_text.strip():  # Se o texto extraído não estiver vazio
+                text += extracted_text
+                if text.strip() and len(text.strip()) >= 250:
+                    print("Texto extraído com sucesso:")
+                    print(text)  # Para debug
+                    return text.strip()
         
     except Exception as e:
         print(f"Erro ao extrair texto do PDF com fitz: {e}")
@@ -110,8 +110,6 @@ Valor da Nota Fiscal: Extraia como um número decimal (exemplo: 1500.00), Em alg
 Formato de Saída:
 Retorne as informações extraídas no seguinte formato JSON:
 
-json
-Copiar código
 {{
   "cnpj": "CNPJ extraído do tomador de serviço ou prestador do serviço",
   "num_nf": "Número da Nota Fiscal extraído",
@@ -194,61 +192,96 @@ def format_cnpj(cnpj):
         return f"{cnpj[:2]}.{cnpj[2:5]}.{cnpj[5:8]}/{cnpj[8:12]}-{cnpj[12:]}"
     return cnpj  #Se não tiver 14 digitos, retorna o cnpj original
 
+def compare_extracted_data(pdf_text, house_cnpj, invoice_number, proposal_value):
+
+    # Extrai, formata e compara os dados extraídos do texto do PDF com os dados fornecidos.
+
+    # Extrai os dados do PDF
+    extracted_data = extract_data_with_openai(pdf_text)
+    extracted_invoice_number = extracted_data.get("num_nf") or "0"
+    extracted_cnpj = extracted_data.get("cnpj") or "0"  # Valor padrão caso não exista
+    print(extracted_cnpj, extracted_data.get("cnpj") or "0")
+    extracted_proposal_value = extracted_data.get("valor") or 0 
+
+    # Formata os CNPJs para comparação
+    formatted_house_cnpj = format_cnpj(house_cnpj)
+    formatted_extracted_cnpj = format_cnpj(extracted_cnpj)
+
+    # Logs para debug
+    print(f"Query CNPJ: {formatted_house_cnpj} | ChatGPT CNPJ: {formatted_extracted_cnpj}")
+    print(f"Query Invoice Number: {invoice_number} | ChatGPT Invoice Number: {extracted_invoice_number}")
+    print(f"Query Proposal Value: {proposal_value} | ChatGPT Proposal Value: {extracted_proposal_value}")
+
+    # Compara os dados
+    if (formatted_extracted_cnpj.strip() == formatted_house_cnpj.strip() and
+        extracted_invoice_number.strip() == invoice_number.strip() and
+        float(extracted_proposal_value) == float(proposal_value)):
+        return True, {
+            "cnpj": formatted_extracted_cnpj,
+            "num_nf": extracted_invoice_number,
+            "valor": extracted_proposal_value,
+        }
+
+    # Retorna False e os dados extraídos em caso de divergência
+    return False, {
+            "cnpj": formatted_extracted_cnpj,
+            "num_nf": extracted_invoice_number,
+            "valor": extracted_proposal_value,
+        }
+
 #Função para validar os dados
 def validate_data(link_pdf, house_cnpj, invoice_number, proposal_value):
-    formatted_house_cnpj = format_cnpj(house_cnpj)  #Formata o CNPJ para a comparação
-    pdf_path = download_pdf(link_pdf, invoice_number)  #Download do PDF
-    if pdf_path:
-        pdf_text = extract_text_from_pdf(pdf_path)  #Extrair texto do PDF
-        extracted_data = extract_data_with_openai(pdf_text)  #Extrai os dados do PDF
-        #print(extracted_data) #Serve para ver os dados extraidos, também pra debugar
-        extracted_cnpj = extracted_data["cnpj"]
-        extracted_invoice_number = extracted_data["num_nf"]
-        extracted_proposal_value = extracted_data["valor"]
+    #Valida os dados extraídos de um PDF contra os dados fornecidos.
+    #Tenta validar duas vezes antes de falhar.
+    pdf_path = download_pdf(link_pdf, invoice_number)
+    if not pdf_path:
+        print("Erro: Caminho do PDF inválido ou não acessível.")
+        return False, {"cnpj": "N/A", "num_nf": "N/A", "valor": "N/A"}
 
-        if extracted_cnpj is None:
-            extracted_cnpj = "0"
+    pdf_text = extract_text_from_pdf(pdf_path)
 
-        formatted_extracted_cnpj = format_cnpj(extracted_cnpj)
-        
-        #Print para debugar, sendo possivel verificar os valores da query e os valores extraídos finais
-        print(f"Query CNPJ: {formatted_house_cnpj} ChatGPT CNPJ: {formatted_extracted_cnpj}")
-        print(f"Query Invoice Number: {invoice_number} ChatGPT Invoice Number: {extracted_invoice_number}")
-        print(f"Query Proposal Value: {proposal_value} ChatGPT Proposal Value: {extracted_proposal_value}")
+    # Primeira tentativa de validação
+    print("Validação em andamento...")
+    is_valid, data = compare_extracted_data(pdf_text, house_cnpj, invoice_number, proposal_value)
+    #print(f"Revalidação - CNPJ: {data['cnpj']}, NF: {data['num_nf']}, Valor: {data['valor']}")
+    if is_valid:
+        return True, data
 
+    # Segunda tentativa de validação
+    print("Revalidação em andamento...")
+    is_valid, data = compare_extracted_data(pdf_text, house_cnpj, invoice_number, proposal_value)
+    #print(f"Revalidação - CNPJ: {data['cnpj']}, NF: {data['num_nf']}, Valor: {data['valor']}")
+    if is_valid:
+        return True, data
+    
+    # Terceira tentativa de validação
+    print("Segunda Revalidação em andamento...")
+    is_valid, data = compare_extracted_data(pdf_text, house_cnpj, invoice_number, proposal_value)
+    #print(f"Revalidação - CNPJ: {data['cnpj']}, NF: {data['num_nf']}, Valor: {data['valor']}")
+    if is_valid:
+        return True, data
 
-        #Adicionando verificações para valores Nulos antes de comparar
-        if extracted_cnpj is not None and extracted_invoice_number is not None and extracted_proposal_value is not None:
-            #Converta valores numéricos em floats para comparação direta
-            try:
-                extracted_proposal_value = float(extracted_proposal_value)  #Verifica se está em float
-            except ValueError:
-                print("Erro ao converter extracted_proposal_value em float.")
-                return False
-
-            #Finalmente compara os dados, se tiver tudo certo, retorna True
-            if (formatted_extracted_cnpj.strip() == formatted_house_cnpj.strip() and
-                extracted_invoice_number.strip() == invoice_number.strip() and
-                extracted_proposal_value == float(proposal_value)):
-                return True
-    return False
+    # Falha após duas tentativas
+    print("Validação falhou após duas tentativas.")
+    #print(f"Revalidação - CNPJ: {data['cnpj']}, NF: {data['num_nf']}, Valor: {data['valor']}")
+    return False, data
 
 #Função para inserir os resultados no banco por meio do EPM
 processed_ids = set()
 
-def insert_epm(tid, fid, data):
+def insert_epm(tid, fid, nf_id, data):
     # Verifique se o tid está presente e é válido
     if not tid or tid == "tid invalido":
         print("Erro: tid inválido.")
         return
 
     # Verificar se já foi processado
-    if (tid, fid) in processed_ids:
+    if nf_id in processed_ids:
         print("Este registro já foi processado. Ignorando...")
         return  # Ignorar se já foi processado
 
     # Adicionar a combinação (tid, fid) ao conjunto
-    processed_ids.add((tid, fid))
+    processed_ids.add(nf_id)
 
     # Seu login do EPM
     login_data = {

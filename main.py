@@ -60,26 +60,29 @@ def process_invoices():
         pdf_link = invoice.Link
         #Antes de subir o valor pro banco é necessario dividir por 100, pois ao subir para o banco ele mutiplica por 100.
         #Provavelmente alguma configuração do Banco
-        bank_value = proposal_value / 100 
-
+    
+        validation_result, extracted_data = validate_data(pdf_link, house_cnpj, invoice_number, proposal_value)
+        print("Validation Result:", validation_result)
         # Validate the PDF data
-        if validate_data(pdf_link, house_cnpj, invoice_number, proposal_value) == True:
-            insert_epm("VF9JTkZPU19OT1RBU19GSVNDQUlTOjE2NTUwNg==", 258,  
-       {
-            "FK_NOTA_FISCAL": nf_id,
-            "NUMERO_ROBO": invoice_number,
-            "CNPJ_TOMADOR": house_cnpj,
-            "VALOR_SERVICO": bank_value,
-        })
+        if validation_result:
+            insert_epm("VF9JTkZPU19OT1RBU19GSVNDQUlTOjE2NTUwNg==", 258, nf_id, 
+            {
+                "FK_NOTA_FISCAL": nf_id,
+                "NUMERO_ROBO": extracted_data["num_nf"],
+                "CNPJ_TOMADOR": extracted_data["cnpj"],
+                "VALOR_SERVICO": extracted_data["valor"],
+                "DESCRICAO": "1",
+            })
             results.append(f"{nf_id}: Certo")
         else:
-            insert_epm("VF9JTkZPU19OT1RBU19GSVNDQUlTOjE2NTUwNg==", 258,  
-       {
-            "FK_NOTA_FISCAL": nf_id,
-            "NUMERO_ROBO": invoice_number,
-            "CNPJ_TOMADOR": house_cnpj,
-            "VALOR_SERVICO": bank_value,
-        })
+            insert_epm("VF9JTkZPU19OT1RBU19GSVNDQUlTOjE2NTUwNg==", 258, nf_id, 
+            {
+                "FK_NOTA_FISCAL": nf_id,
+                "NUMERO_ROBO": extracted_data["num_nf"],
+                "CNPJ_TOMADOR": extracted_data["cnpj"],
+                "VALOR_SERVICO": extracted_data["valor"],
+                "DESCRICAO": "0",
+            })
             results.append(f"{nf_id}: Conferir")
 
     return results
