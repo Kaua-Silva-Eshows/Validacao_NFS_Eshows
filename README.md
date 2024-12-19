@@ -62,83 +62,39 @@ python main.py
 ## Consulta de validação
 ```sql
 SELECT
-
-TP.ID AS 'ID Proposta',
-TNF.ID AS 'NF_ID',
-TA.NOME AS 'Artista',
-TNF.NUMERO_NOTA_FISCAL AS 'Num_NF',
-INF.NUMERO_ROBO AS 'Num_NF_IA',
-
-CASE
-    WHEN TC.CNPJ NOT LIKE '%\.%' 
-      AND TC.CNPJ NOT LIKE '%/%' 
-      AND TC.CNPJ NOT LIKE '%-%' 
-    THEN CONCAT(
-        SUBSTRING(TC.CNPJ, 1, 2), '.', 
-        SUBSTRING(TC.CNPJ, 3, 3), '.', 
-        SUBSTRING(TC.CNPJ, 6, 3), '/', 
-        SUBSTRING(TC.CNPJ, 9, 4), '-', 
-        SUBSTRING(TC.CNPJ, 13, 2)
-    )
-    ELSE TC.CNPJ
-END AS 'CNPJ_Casa',
-
-INF.CNPJ_TOMADOR AS 'CNPJ_Casa_IA',
-TP.VALOR_BRUTO AS 'Valor Proposta',
-INF.VALOR_SERVICO AS 'Valor_Liquido_IA',
-
-CASE 
-    WHEN TNF.NUMERO_NOTA_FISCAL = INF.NUMERO_ROBO 
-         AND (
-             (TC.CNPJ NOT LIKE '%\.%' 
-              	AND TC.CNPJ NOT LIKE '%/%' 
-              	AND TC.CNPJ NOT LIKE '%-%' 
-             AND CONCAT(
-                 SUBSTRING(TC.CNPJ, 1, 2), '.', 
-                 SUBSTRING(TC.CNPJ, 3, 3), '.', 
-                 SUBSTRING(TC.CNPJ, 6, 3), '/', 
-                 SUBSTRING(TC.CNPJ, 9, 4), '-', 
-                 SUBSTRING(TC.CNPJ, 13, 2)
-             ) = INF.CNPJ_TOMADOR)
-             OR 
-             (TC.CNPJ = INF.CNPJ_TOMADOR)
-         )
-         AND TP.VALOR_BRUTO = INF.VALOR_SERVICO
-    THEN '1'
-    ELSE '0'
-END AS 'VALIDAÇÃO',
-
-CONCAT(
-    CASE WHEN TNF.NUMERO_NOTA_FISCAL != INF.NUMERO_ROBO THEN 'Número Divergente; ' ELSE '' END,
-    CASE 
-        WHEN NOT (
-             (TC.CNPJ NOT LIKE '%\.%' 
-              	AND TC.CNPJ NOT LIKE '%/%' 
-              	AND TC.CNPJ NOT LIKE '%-%' 
-             AND CONCAT(
-                 SUBSTRING(TC.CNPJ, 1, 2), '.', 
-                 SUBSTRING(TC.CNPJ, 3, 3), '.', 
-                 SUBSTRING(TC.CNPJ, 6, 3), '/', 
-                 SUBSTRING(TC.CNPJ, 9, 4), '-', 
-                 SUBSTRING(TC.CNPJ, 13, 2)
-             ) = INF.CNPJ_TOMADOR)
-             OR 
-             (TC.CNPJ = INF.CNPJ_TOMADOR)
-         ) THEN 'CNPJ Divergente; ' ELSE '' END,
-    CASE WHEN TP.VALOR_BRUTO != INF.VALOR_SERVICO THEN 'Valor Divergente; ' ELSE '' END
-) AS 'DESCRICAO',
-
-EF.FILENAME AS 'Link'
-
-FROM T_PROPOSTAS TP 
-LEFT JOIN T_PROPOSTA_NOTA_FISCAL PNF ON (PNF.FK_PROPOSTA = TP.ID)
-LEFT JOIN T_NOTAS_FISCAIS TNF ON (PNF.FK_NOTA = TNF.ID AND TNF.FK_STATUS_NF)
-LEFT JOIN EPM_FILES EF ON (TNF.ID = EF.TABLE_ID)
-LEFT JOIN T_ATRACOES TA ON (TNF.FK_ATRACAO = TA.ID)
-LEFT JOIN T_COMPANIES TC ON (TP.FK_CONTRANTE = TC.ID)
-LEFT JOIN T_CONFERENCIA_NOTA_FISCAL TCNF ON (TNF.FK_STATUS_NF = TCNF.ID)
-INNER JOIN T_INFOS_NOTAS_FISCAIS INF ON INF.FK_NOTA_FISCAL = TNF.ID
-WHERE DATE_FORMAT(INF.LAST_UPDATE, '%Y/%m/%d') = CURDATE()
+        TP.FK_FECHAMENTO AS 'Fechamento',
+        TP.ID AS 'PROPOSTA',
+        TNF.ID AS 'NF_ID',
+        CASE WHEN TP.ADIANTAMENTO = 1 THEN 'sim' ELSE 'nao' END AS 'Antecipacao',
+        TC.NAME AS 'Casa',
+        TC.CNPJ AS 'CNPJ_Casa',
+        TA.NOME AS 'Artista',
+        TNF.NUMERO_NOTA_FISCAL AS 'Num_NF',
+        TP.VALOR_BRUTO AS 'Valor_Proposta',
+        EF.FILENAME AS 'Link',
+        TCNF.STATUS_NF AS 'Status_NF',
+        TNF2.ID AS ID_NOTA_FISCAL,
+        CONCAT("https://admin.eshows.com.br/proposta/", P2.ID) AS ID_PROPOSTA,
+        TNF2.CREATED_AT,
+        EF2.FILENAME,
+        COUNT(*) OVER (PARTITION BY TP.ID) AS CNT
+    FROM T_PROPOSTAS TP 
+    LEFT JOIN T_PROPOSTA_NOTA_FISCAL PNF ON (PNF.FK_PROPOSTA = TP.ID)
+    LEFT JOIN T_NOTAS_FISCAIS TNF ON (PNF.FK_NOTA = TNF.ID AND TNF.FK_STATUS_NF = 100)
+    LEFT JOIN T_FECHAMANETOS TF ON (TP.FK_FECHAMENTO = TF.ID)
+    LEFT JOIN EPM_FILES EF ON (TNF.ID = EF.TABLE_ID)
+    LEFT JOIN T_ATRACOES TA ON (TNF.FK_ATRACAO = TA.ID)
+    LEFT JOIN T_COMPANIES TC ON (TP.FK_CONTRANTE = TC.ID)
+    LEFT JOIN T_CONFERENCIA_NOTA_FISCAL TCNF ON (TNF.FK_STATUS_NF = TCNF.ID)
+    LEFT JOIN T_CONFERENCIA_NOTA_FISCAL_ROBO TCNFR ON (TNF.FK_STATUS_NF_ROBO = TCNFR.ID)
+    LEFT JOIN T_NOTAS_FISCAIS TNF2 ON (TNF2.FK_ATRACAO = TP.FK_CONTRATADO AND TNF2.NUMERO_NOTA_FISCAL = TNF.NUMERO_NOTA_FISCAL AND TNF2.ID != TNF.ID AND TNF2.FK_STATUS_NF != 102)
+    LEFT JOIN T_PROPOSTAS P2 ON (P2.FK_NOTA_FISCAL = TNF2.ID)
+    LEFT JOIN EPM_FILES EF2 ON (TNF2.ID = EF2.TABLE_ID AND EF2.TABLE_NAME = "T_NOTAS_FISCAIS")
+    LEFT JOIN T_INFOS_NOTAS_FISCAIS INF ON (INF.FK_NOTA_FISCAL = TNF.ID)
+    WHERE EF.TABLE_NAME = 'T_NOTAS_FISCAIS'
+      AND TCNF.STATUS_NF = "Pendente"
+      AND TC.ID NOT IN (102)
+      AND INF.ID IS NULL
 ```
 
 - A consulta SQL é responsável por recuperar e verificar os dados das notas fiscais a partir do banco de dados. Ela realiza as seguintes verificações:
